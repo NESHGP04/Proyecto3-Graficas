@@ -1,6 +1,6 @@
 use nalgebra_glm::{Vec3, Mat4};
-use minifb::{Key, Window, WindowOptions, ScaleMode};
-use std::time::Duration;
+use minifb::{Key, Window, WindowOptions};
+use std::time::{Duration, Instant};
 use std::f32::consts::PI;
 
 mod framebuffer;
@@ -12,13 +12,16 @@ mod color;
 mod fragment;
 mod shaders;
 mod shader;
+mod camera;
+mod skybox;
 
 use framebuffer::Framebuffer;
 use vertex::Vertex;
 use obj::Obj;
-use triangle::{triangle, ShaderType};
+use triangle::{triangle, ShaderType}; 
 use shaders::vertex_shader;
-use crate::line::line;
+use camera::Camera;
+use skybox::Skybox;
 
 pub struct Uniforms {
     model_matrix: Mat4,
@@ -29,13 +32,23 @@ struct CelestialBody {
     orbital_angle: f32,
     orbital_speed: f32,
     scale: f32,
-    visible_radius: f32, 
     rotation: Vec3,
     shader_type: ShaderType,
     rotation_speed: f32,
     name: &'static str,
+    color: u32, // Para las órbitas
 }
 
+// #[derive(Clone, Copy, PartialEq)]
+// pub enum ShaderType {
+//     Sun,
+//     RockyPlanet,
+//     GasGiant,
+//     IcePlanet,
+//     VolcanicPlanet,
+//     Moon,
+//     Spaceship,
+// }
 
 fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
     let (sin_x, cos_x) = rotation.x.sin_cos();
@@ -76,14 +89,12 @@ fn create_model_matrix(translation: Vec3, scale: f32, rotation: Vec3) -> Mat4 {
 }
 
 fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Vertex], shader_type: ShaderType, time: f32) {
-    // Vertex Shader Stage
     let mut transformed_vertices = Vec::with_capacity(vertex_array.len());
     for vertex in vertex_array {
         let transformed = vertex_shader(vertex, uniforms);
         transformed_vertices.push(transformed);
     }
 
-    // Primitive Assembly Stage
     let mut triangles = Vec::new();
     for i in (0..transformed_vertices.len()).step_by(3) {
         if i + 2 < transformed_vertices.len() {
@@ -95,13 +106,11 @@ fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Ve
         }
     }
 
-    // Rasterization Stage
     let mut fragments = Vec::new();
     for tri in &triangles {
         fragments.extend(triangle(&tri[0], &tri[1], &tri[2], shader_type, time));
     }
 
-    // Fragment Processing Stage
     for fragment in fragments {
         let x = fragment.position.x as usize;
         let y = fragment.position.y as usize;
@@ -109,6 +118,33 @@ fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Ve
             let color = fragment.color.to_hex();
             framebuffer.set_current_color(color);
             framebuffer.point(x, y, fragment.depth);
+        }
+    }
+}
+
+fn draw_orbit(framebuffer: &mut Framebuffer, center: Vec3, radius: f32, color: u32, camera: &Camera, window_width: f32, window_height: f32) {
+    let segments = 100;
+    for i in 0..segments {
+        let angle1 = (i as f32 / segments as f32) * 2.0 * PI;
+        let angle2 = ((i + 1) as f32 / segments as f32) * 2.0 * PI;
+
+        let p1 = Vec3::new(
+            center.x + radius * angle1.cos(),
+            center.y,
+            center.z + radius * angle1.sin(),
+        );
+
+        let p2 = Vec3::new(
+            center.x + radius * angle2.cos(),
+            center.y,
+            center.z + radius * angle2.sin(),
+        );
+
+        let screen1 = camera.get_screen_position(p1, window_width, window_height);
+        let screen2 = camera.get_screen_position(p2, window_width, window_height);
+
+        if screen1.z > 0.0 && screen2.z > 0.0 {
+            draw_line(framebuffer, screen1.x as i32, screen1.y as i32, screen2.x as i32, screen2.y as i32, color);
         }
     }
 }
@@ -125,7 +161,7 @@ fn draw_line(framebuffer: &mut Framebuffer, x1: i32, y1: i32, x2: i32, y2: i32, 
     loop {
         if x >= 0 && y >= 0 && (x as usize) < framebuffer.width && (y as usize) < framebuffer.height {
             framebuffer.set_current_color(color);
-            framebuffer.point(x as usize, y as usize, 0.0);
+            framebuffer.point(x as usize, y as usize, -1.0);
         }
         if x == x2 && y == y2 {
             break;
@@ -142,29 +178,7 @@ fn draw_line(framebuffer: &mut Framebuffer, x1: i32, y1: i32, x2: i32, y2: i32, 
     }
 }
 
-fn draw_ring(framebuffer: &mut Framebuffer, center: Vec3, inner_radius: f32, outer_radius: f32, color: u32) {
-    let steps = 100;
-    for i in 0..steps {
-        let theta1 = (i as f32 / steps as f32) * std::f32::consts::TAU;
-        let theta2 = ((i + 1) as f32 / steps as f32) * std::f32::consts::TAU;
-
-        let x1_inner = center.x + inner_radius * theta1.cos();
-        let y1_inner = center.y + inner_radius * theta1.sin();
-        let x2_inner = center.x + inner_radius * theta2.cos();
-        let y2_inner = center.y + inner_radius * theta2.sin();
-
-        let x1_outer = center.x + outer_radius * theta1.cos();
-        let y1_outer = center.y + outer_radius * theta1.sin();
-        let x2_outer = center.x + outer_radius * theta2.cos();
-        let y2_outer = center.y + outer_radius * theta2.sin();
-
-        draw_line(framebuffer, x1_inner as i32, y1_inner as i32, x2_inner as i32, y2_inner as i32, color);
-        draw_line(framebuffer, x1_outer as i32, y1_outer as i32, x2_outer as i32, y2_outer as i32, color);
-    }
-}
-
-
-/// Dibuja texto simple en pantalla (blanco)
+/// Dibuja texto simple en pantalla
 fn draw_text(framebuffer: &mut Framebuffer, x: usize, y: usize, text: &str, color: u32) {
     let bytes = text.as_bytes();
     for (i, &b) in bytes.iter().enumerate() {
@@ -172,13 +186,14 @@ fn draw_text(framebuffer: &mut Framebuffer, x: usize, y: usize, text: &str, colo
             continue;
         }
         let cx = x + i * 8;
-        draw_char(framebuffer, cx, y, b as char, color);
+        if cx < framebuffer.width && y < framebuffer.height {
+            draw_char(framebuffer, cx, y, b as char, color);
+        }
     }
 }
 
 /// Dibuja un solo carácter ASCII de 8x8
 fn draw_char(framebuffer: &mut Framebuffer, x: usize, y: usize, c: char, color: u32) {
-    // Fuente monoespaciada básica de 8x8 (95 caracteres imprimibles)
     const FONT: [[u8; 8]; 95] = [
         [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00], // ' '
         [0x18,0x3C,0x3C,0x18,0x18,0x00,0x18,0x00], // '!'
@@ -282,14 +297,16 @@ fn draw_char(framebuffer: &mut Framebuffer, x: usize, y: usize, c: char, color: 
     }
     let index = c as usize - 32;
     let bitmap = FONT[index];
+    
+    framebuffer.set_current_color(color);
+    
     for (row, bits) in bitmap.iter().enumerate() {
         for col in 0..8 {
             if bits & (1 << col) != 0 {
                 let px = x + col;
                 let py = y + row;
                 if px < framebuffer.width && py < framebuffer.height {
-                    framebuffer.set_current_color(color);
-                    framebuffer.point(px, py, 0.0);
+                    framebuffer.point(px, py, -2.0); // Depth negativo para estar al frente
                 }
             }
         }
@@ -297,313 +314,448 @@ fn draw_char(framebuffer: &mut Framebuffer, x: usize, y: usize, c: char, color: 
 }
 
 fn main() {
-    let window_width = 1200;
-    let window_height = 800;
-    let framebuffer_width = 1200;
-    let framebuffer_height = 800;
+    let window_width = 1400;
+    let window_height = 900;
+    let framebuffer_width = 1400;
+    let framebuffer_height = 900;
     let frame_delay = Duration::from_millis(16);
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "Sistema Solar - Órbitas Planetarias",
+        "Sistema Solar 3D - Proyecto Final",
         window_width,
         window_height,
         WindowOptions::default(),
     )
     .unwrap();
 
-    window.set_position(150, 50);
+    window.set_position(100, 50);
     window.update();
 
-    framebuffer.set_background_color(0x000008); // Negro espacio profundo
+    framebuffer.set_background_color(0x000008);
 
-    // Carga el modelo de esfera
-    let obj = Obj::load("../assets/models/sphere.obj").expect("Failed to load sphere.obj");
-    let vertex_arrays = obj.get_vertex_array();
+    // Cargar modelos
+    let sphere_obj = Obj::load("../assets/models/sphere.obj").expect("Failed to load sphere.obj");
+    let sphere_vertices = sphere_obj.get_vertex_array();
+
+    let spaceship_obj = Obj::load("../assets/models/spaceship.obj").expect("Failed to load spaceship.obj");
+    let spaceship_vertices = spaceship_obj.get_vertex_array();
+
+    // Crear skybox con 1500 estrellas
+    let skybox = Skybox::new(1500, framebuffer_width, framebuffer_height);
+
+    // Inicializar cámara
+    let mut camera = Camera::new(Vec3::new(0.0, 300.0, 800.0));
+    camera.update_vectors();
 
     let mut time = 0.0f32;
+    let mut last_frame = Instant::now();
 
-    // Centro del sistema (donde está el sol)
-    let sun_center_x = 600.0;
-    let sun_center_y = 450.0;
+    // Centro del sistema solar
+    let sun_center = Vec3::new(0.0, 0.0, 0.0);
 
-    // Configuración de la luna del planeta rocoso
-    let mut moon_angle: f32 = 0.0;
-    let moon_orbital_radius = 100.0; // distancia desde el planeta
+    // Definir cuerpos celestes
+    let mut bodies = vec![
+        CelestialBody {
+            orbital_radius: 0.0,
+            orbital_angle: 0.0,
+            orbital_speed: 0.0,
+            scale: 150.0,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            shader_type: ShaderType::Sun,
+            rotation_speed: 0.005,
+            name: "Sol",
+            color: 0xFFFF00,
+        },
+        CelestialBody {
+            orbital_radius: 300.0,
+            orbital_angle: 0.0,
+            orbital_speed: 0.015,
+            scale: 60.0,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            shader_type: ShaderType::RockyPlanet,
+            rotation_speed: 0.02,
+            name: "Planeta Rocoso",
+            color: 0x4488FF,
+        },
+        CelestialBody {
+            orbital_radius: 500.0,
+            orbital_angle: PI / 2.0,
+            orbital_speed: 0.012,
+            scale: 70.0,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            shader_type: ShaderType::VolcanicPlanet,
+            rotation_speed: 0.018,
+            name: "Planeta Volcánico",
+            color: 0xFF4400,
+        },
+        CelestialBody {
+            orbital_radius: 750.0,
+            orbital_angle: PI,
+            orbital_speed: 0.008,
+            scale: 120.0,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            shader_type: ShaderType::GasGiant,
+            rotation_speed: 0.015,
+            name: "Gigante Gaseoso",
+            color: 0xFFAA66,
+        },
+        CelestialBody {
+            orbital_radius: 1000.0,
+            orbital_angle: PI * 1.5,
+            orbital_speed: 0.005,
+            scale: 80.0,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            shader_type: ShaderType::IcePlanet,
+            rotation_speed: 0.01,
+            name: "Planeta Helado",
+            color: 0x88DDFF,
+        },
+        CelestialBody {
+            orbital_radius: 400.0,
+            orbital_angle: PI / 4.0,
+            orbital_speed: 0.025,
+            scale: 40.0,
+            rotation: Vec3::new(0.0, 0.0, 0.0),
+            shader_type: ShaderType::Moon,
+            rotation_speed: 0.03,
+            name: "Luna",
+            color: 0xCCCCCC,
+        },
+    ];
+
+    // Luna orbitando el planeta rocoso
+    let mut moon_angle = 0.0f32;
+    let moon_orbital_radius = 100.0;
     let moon_speed = 0.05;
-    let moon_scale = 40.0;
-
-    // Define los cuerpos celestes con órbitas
-let mut bodies = vec![
-    CelestialBody {
-        orbital_radius: 250.0,
-        orbital_angle: 0.0,
-        orbital_speed: 0.02,
-        scale: 80.0,
-        visible_radius: 80.0 / 2.0, // planeta rocoso sin anillos
-        rotation: Vec3::new(0.0, 0.0, 0.0),
-        shader_type: ShaderType::RockyPlanet,
-        rotation_speed: 0.015,
-        name: "Planeta Rocoso",
-    },
-    CelestialBody {
-        orbital_radius: 480.0,
-        orbital_angle: std::f32::consts::PI,
-        orbital_speed: 0.01,
-        scale: 130.0,
-        visible_radius: 130.0 / 2.0 + 80.0, // 👈 planeta gaseoso + anillos
-        rotation: Vec3::new(0.0, 0.0, 0.0),
-        shader_type: ShaderType::GasGiant,
-        rotation_speed: 0.012,
-        name: "Gigante Gaseoso",
-    },
-    CelestialBody {
-        orbital_radius: 620.0,
-        orbital_angle: std::f32::consts::PI * 1.5,
-        orbital_speed: 0.007,
-        scale: 100.0,
-        visible_radius: 100.0 / 2.0,
-        rotation: Vec3::new(0.0, 0.0, 0.0),
-        shader_type: ShaderType::IcePlanet,
-        rotation_speed: 0.01,
-        name: "Planeta Helado",
-    },
-];
-
-    // Camera control
-    let mut camera_zoom = 1.0f32;
-    let mut camera_x = 0.0f32;
-    let mut camera_y = 0.0f32;
-    let camera_speed = 10.0;
 
     let mut paused = false;
     let mut show_orbits = true;
+    let mut show_ui = true;
 
-    println!("╔════════════════════════════════════════════════════════╗");
-    println!("║        SISTEMA SOLAR - ÓRBITAS PLANETARIAS            ║");
-    println!("╚════════════════════════════════════════════════════════╝");
+    println!("╔════════════════════════════════════════════════════════════╗");
+    println!("║          SISTEMA SOLAR 3D - PROYECTO FINAL                ║");
+    println!("╚════════════════════════════════════════════════════════════╝");
     println!();
-    println!("☀️  SOL (Centro) con {} planetas en órbita", bodies.len());
-    println!();
-    println!("🪐 PLANETAS (desde el más cercano):");
-    println!("  1. 🌙 Luna - Órbita: 180 (muy rápida)");
-    println!("  2. 🌍 Planeta Rocoso - Órbita: 250");
-    println!("  3. 🌋 Planeta Volcánico - Órbita: 350");
-    println!("  4. 🪐 Gigante Gaseoso - Órbita: 480");
-    println!("  5. ❄️  Planeta Helado - Órbita: 620 (muy lenta)");
+    println!("🌍 CUERPOS CELESTES:");
+    println!("  0: Sol (centro)");
+    println!("  1: Planeta Rocoso");
+    println!("  2: Planeta Volcánico");
+    println!("  3: Gigante Gaseoso");
+    println!("  4: Planeta Helado");
+    println!("  5: Luna");
     println!();
     println!("🎮 CONTROLES:");
-    println!("  ↑↓←→ : Mover cámara");
-    println!("  A/S : Zoom out/in");
-    println!("  ESPACIO : Pausar/Reanudar órbitas");
-    println!("  O : Mostrar/Ocultar órbitas (WIP)");
-    println!("  R : Reset cámara al centro");
-    println!("  ESC : Salir");
+    println!("  W/A/S/D     : Mover cámara");
+    println!("  SPACE/SHIFT : Subir/Bajar");
+    println!("  Q/E         : Rotar cámara (yaw)");
+    println!("  Z/C         : Rotar cámara (pitch)");
+    println!("  0           : Vista general");
+    println!("  1           : Sol");
+    println!("  2           : Planeta Rocoso");
+    println!("  3           : Planeta Volcánico");
+    println!("  4           : Gigante Gaseoso");
+    println!("  5           : Planeta Helado");
+    println!("  6           : Luna");
+    println!("  O           : Toggle órbitas");
+    println!("  P           : Pausar/Reanudar");
+    println!("  H           : Toggle UI");
+    println!("  ESC         : Salir");
     println!();
-    println!("💡 TIP: ¡Observa cómo los planetas internos orbitan más rápido!");
-    println!();
-
-    // Evitar colisiones ajustando las distancias orbitales
-for i in 1..bodies.len() {
-    let prev = &bodies[i - 1];
-    let min_distance = prev.orbital_radius + prev.visible_radius + bodies[i].visible_radius + 40.0; // 40px de margen
-    if bodies[i].orbital_radius < min_distance {
-        bodies[i].orbital_radius = min_distance;
-    }
-}
-
-let moon_orbital_radius = 100.0;
-if moon_orbital_radius < bodies[0].visible_radius + moon_scale {
-    println!("⚠️ Ajustando órbita lunar para evitar colisión con el planeta rocoso");
-}
 
     while window.is_open() {
+        let current_frame = Instant::now();
+        let delta_time = current_frame.duration_since(last_frame).as_secs_f32();
+        last_frame = current_frame;
+
         if window.is_key_down(Key::Escape) {
             break;
         }
 
-        // Toggle pause
-        if window.is_key_pressed(Key::Space, minifb::KeyRepeat::No) {
-            paused = !paused;
-            println!("{}", if paused { "⏸️  Sistema PAUSADO" } else { "▶️  Sistema en MOVIMIENTO" });
+        // Controles de cámara 3D
+        if window.is_key_down(Key::W) {
+            camera.move_forward(delta_time);
         }
-
-        // Toggle orbits
-        if window.is_key_pressed(Key::O, minifb::KeyRepeat::No) {
-            show_orbits = !show_orbits;
-            println!("Órbitas: {}", if show_orbits { "Visible" } else { "Oculto" });
-        }
-
-        // Reset camera
-        if window.is_key_pressed(Key::R, minifb::KeyRepeat::No) {
-            camera_x = 0.0;
-            camera_y = 0.0;
-            camera_zoom = 1.0;
-            println!("📷 Cámara reseteada");
-        }
-
-        // Camera movement
-        if window.is_key_down(Key::Right) {
-            camera_x -= camera_speed;
-        }
-        if window.is_key_down(Key::Left) {
-            camera_x += camera_speed;
-        }
-        if window.is_key_down(Key::Up) {
-            camera_y += camera_speed;
-        }
-        if window.is_key_down(Key::Down) {
-            camera_y -= camera_speed;
-        }
-
-        // Zoom
         if window.is_key_down(Key::S) {
-            camera_zoom += 0.01;
-            if camera_zoom > 2.0 {
-                camera_zoom = 2.0;
-            }
+            camera.move_backward(delta_time);
         }
         if window.is_key_down(Key::A) {
-            camera_zoom -= 0.01;
-            if camera_zoom < 0.3 {
-                camera_zoom = 0.3;
-            }
+            camera.move_left(delta_time);
+        }
+        if window.is_key_down(Key::D) {
+            camera.move_right(delta_time);
+        }
+        if window.is_key_down(Key::Space) {
+            camera.move_up(delta_time);
+        }
+        if window.is_key_down(Key::LeftShift) {
+            camera.move_down(delta_time);
         }
 
+        // Rotación de cámara
+        if window.is_key_down(Key::Q) {
+            camera.rotate(-50.0 * delta_time, 0.0);
+        }
+        if window.is_key_down(Key::E) {
+            camera.rotate(50.0 * delta_time, 0.0);
+        }
+        if window.is_key_down(Key::Z) {
+            camera.rotate(0.0, 30.0 * delta_time);
+        }
+        if window.is_key_down(Key::C) {
+            camera.rotate(0.0, -30.0 * delta_time);
+        }
+
+        // Warping a planetas (teclas 1-6)
+        if window.is_key_pressed(Key::Key0, minifb::KeyRepeat::No) {
+            camera.start_warp(Vec3::new(0.0, 300.0, 800.0));
+            println!("🚀 Warping a: Vista general del sistema");
+        }
+
+        // Sol
+        if window.is_key_pressed(Key::Key1, minifb::KeyRepeat::No) {
+            let target = Vec3::new(0.0, 200.0, 400.0);
+            camera.start_warp(target);
+            println!("🚀 Warping a: {}", bodies[0].name);
+        }
+
+        // Planeta Rocoso
+        if window.is_key_pressed(Key::Key2, minifb::KeyRepeat::No) && bodies.len() > 1 {
+            let planet_pos = calculate_planet_position(&bodies[1], sun_center);
+            let target = Vec3::new(planet_pos.x + 200.0, planet_pos.y + 100.0, planet_pos.z + 200.0);
+            camera.start_warp(target);
+            println!("🚀 Warping a: {} en ({:.0}, {:.0}, {:.0})", bodies[1].name, planet_pos.x, planet_pos.y, planet_pos.z);
+        }
+
+        // Planeta Volcánico
+        if window.is_key_pressed(Key::Key3, minifb::KeyRepeat::No) && bodies.len() > 2 {
+            let planet_pos = calculate_planet_position(&bodies[2], sun_center);
+            let target = Vec3::new(planet_pos.x + 220.0, planet_pos.y + 100.0, planet_pos.z + 220.0);
+            camera.start_warp(target);
+            println!("🚀 Warping a: {} en ({:.0}, {:.0}, {:.0})", bodies[2].name, planet_pos.x, planet_pos.y, planet_pos.z);
+        }
+
+        // Gigante Gaseoso
+        if window.is_key_pressed(Key::Key4, minifb::KeyRepeat::No) && bodies.len() > 3 {
+            let planet_pos = calculate_planet_position(&bodies[3], sun_center);
+            let target = Vec3::new(planet_pos.x + 350.0, planet_pos.y + 150.0, planet_pos.z + 350.0);
+            camera.start_warp(target);
+            println!("🚀 Warping a: {} en ({:.0}, {:.0}, {:.0})", bodies[3].name, planet_pos.x, planet_pos.y, planet_pos.z);
+        }
+
+        // Planeta Helado
+        if window.is_key_pressed(Key::Key5, minifb::KeyRepeat::No) && bodies.len() > 4 {
+            let planet_pos = calculate_planet_position(&bodies[4], sun_center);
+            let target = Vec3::new(planet_pos.x + 250.0, planet_pos.y + 120.0, planet_pos.z + 250.0);
+            camera.start_warp(target);
+            println!("🚀 Warping a: {} en ({:.0}, {:.0}, {:.0})", bodies[4].name, planet_pos.x, planet_pos.y, planet_pos.z);
+        }
+
+        // Luna
+        if window.is_key_pressed(Key::Key6, minifb::KeyRepeat::No) && bodies.len() > 1 {
+            let rocky_pos = calculate_planet_position(&bodies[1], sun_center);
+            let moon_pos = Vec3::new(
+                rocky_pos.x + moon_orbital_radius * moon_angle.cos(),
+                rocky_pos.y,
+                rocky_pos.z + moon_orbital_radius * moon_angle.sin(),
+            );
+            let target = Vec3::new(moon_pos.x + 120.0, moon_pos.y + 50.0, moon_pos.z + 120.0);
+            camera.start_warp(target);
+            println!("🚀 Warping a: Luna en ({:.0}, {:.0}, {:.0})", moon_pos.x, moon_pos.y, moon_pos.z);
+        }
+        
+
+        // Toggles
+        if window.is_key_pressed(Key::O, minifb::KeyRepeat::No) {
+            show_orbits = !show_orbits;
+            println!("Órbitas: {}", if show_orbits { "✓ Visible" } else { "✗ Oculto" });
+        }
+        if window.is_key_pressed(Key::P, minifb::KeyRepeat::No) {
+            paused = !paused;
+            println!("{}", if paused { "⏸️  PAUSADO" } else { "▶️  REPRODUCIENDO" });
+        }
+        if window.is_key_pressed(Key::H, minifb::KeyRepeat::No) {
+            show_ui = !show_ui;
+            println!("UI: {}", if show_ui { "✓ Visible" } else { "✗ Oculto" });
+        }
+
+        // Actualizar warp
+        camera.update_warp(delta_time);
+
+        // Clear
         framebuffer.clear();
+
+        // Render skybox
+        skybox.render_with_twinkle(&mut framebuffer, time);
 
         // Update time
         if !paused {
-            time += 0.016;
-            
-            // Update orbital positions and rotations
+            time += delta_time;
             for body in &mut bodies {
-                body.orbital_angle += body.orbital_speed;
-                body.rotation.y += body.rotation_speed;
+                body.orbital_angle += body.orbital_speed * delta_time;
+                body.rotation.y += body.rotation_speed * delta_time;
             }
         }
 
-        // Calculate sun position with camera
-        let sun_screen_x = sun_center_x * camera_zoom + camera_x;
-        let sun_screen_y = sun_center_y * camera_zoom + camera_y;
-
-        // Render the SUN first (always at center)
-        let sun_position = Vec3::new(sun_screen_x, sun_screen_y, 0.0);
-        let sun_matrix = create_model_matrix(
-            sun_position,
-            140.0 * camera_zoom,
-            Vec3::new(0.0, time * 0.005, 0.0)
-        );
-        let sun_uniforms = Uniforms { model_matrix: sun_matrix };
-        render(&mut framebuffer, &sun_uniforms, &vertex_arrays, ShaderType::Sun, time);
-
-        // Render all planets in their orbits
+        // Render planetas
         for body in &bodies {
-            // Calculate orbital position using polar coordinates
-            let orbit_x = sun_center_x + body.orbital_radius * body.orbital_angle.cos();
-            let orbit_y = sun_center_y + body.orbital_radius * body.orbital_angle.sin();
-            
-            // Apply camera transformations
-            let screen_position = Vec3::new(
-                orbit_x * camera_zoom + camera_x,
-                orbit_y * camera_zoom + camera_y,
-                0.0
-            );
+            let world_pos = calculate_planet_position(body, sun_center);
+            let screen_pos = camera.get_screen_position(world_pos, window_width as f32, window_height as f32);
 
-            // Only render if visible on screen (with generous margin)
-            if screen_position.x > -300.0 && screen_position.x < window_width as f32 + 300.0 &&
-               screen_position.y > -300.0 && screen_position.y < window_height as f32 + 300.0 {
-                
-                let model_matrix = create_model_matrix(
-                    screen_position,
-                    body.scale * camera_zoom,
-                    body.rotation
-                );
+            // Solo renderizar si está delante de la cámara
+            if screen_pos.z > 0.0 {
+                let model_matrix = create_model_matrix(screen_pos, body.scale, body.rotation);
                 let uniforms = Uniforms { model_matrix };
+                render(&mut framebuffer, &uniforms, &sphere_vertices, body.shader_type, time);
+            }
 
-                render(&mut framebuffer, &uniforms, &vertex_arrays, body.shader_type, time);
+            // Detección de colisiones
+            if camera.check_collision(world_pos, body.scale) {
+                camera.resolve_collision(world_pos, body.scale);
             }
         }
 
-        // Mostrar instrucciones en esquina inferior izquierda
-        let instructions_y = framebuffer_height - 90;
-        let color_text = 0xFFFFFF;
+        // Render luna orbitando el planeta rocoso
+        if bodies.len() > 1 {
+            let rocky_planet = &bodies[1];
+            let rocky_pos = calculate_planet_position(rocky_planet, sun_center);
+            
+            // Actualizar ángulo de la luna
+            if !paused {
+                moon_angle += moon_speed * delta_time;
+            }
+            
+            // Calcular posición de la luna
+            let moon_world_pos = Vec3::new(
+                rocky_pos.x + moon_orbital_radius * moon_angle.cos(),
+                rocky_pos.y,
+                rocky_pos.z + moon_orbital_radius * moon_angle.sin(),
+            );
+            
+            let moon_screen = camera.get_screen_position(moon_world_pos, window_width as f32, window_height as f32);
+            
+            if moon_screen.z > 0.0 {
+                let moon_matrix = create_model_matrix(
+                    moon_screen,
+                    25.0,  // Tamaño de la luna
+                    Vec3::new(0.0, moon_angle * 2.0, 0.0),
+                );
+                let moon_uniforms = Uniforms { model_matrix: moon_matrix };
+                render(&mut framebuffer, &moon_uniforms, &sphere_vertices, ShaderType::Moon, time);
+            }
+            
+            // Órbita de la luna (opcional)
+            if show_orbits {
+                draw_orbit(
+                    &mut framebuffer,
+                    rocky_pos,
+                    moon_orbital_radius,
+                    0xCCCCCC,
+                    &camera,
+                    window_width as f32,
+                    window_height as f32,
+                );
+            }
+        }
 
-        draw_text(
-            &mut framebuffer,
-            20,
-            instructions_y,
-            "Presiona ESPACIO para pausar cuando los planetas estén en buenas posiciones",
-            color_text,
-        );
-        draw_text(
-            &mut framebuffer,
-            20,
-            instructions_y + 15,
-            "* Usa A/S para hacer zoom y capturar detalles",
-            color_text,
-        );
-        draw_text(
-            &mut framebuffer,
-            20,
-            instructions_y + 30,
-            "* Usa flechas para centrarte en cada planeta",
-            color_text,
-        );
-        draw_text(
-            &mut framebuffer,
-            20,
-            instructions_y + 45,
-            "* Presiona R para volver al centro y ver todo el sistema",
-            color_text,
-        );
-
-        // Dibuja los anillos del planeta gaseoso
-let gas_giant = &bodies[2]; // el gigante gaseoso en tu lista
-let gas_x = sun_center_x + gas_giant.orbital_radius * gas_giant.orbital_angle.cos();
-let gas_y = sun_center_y + gas_giant.orbital_radius * gas_giant.orbital_angle.sin();
-
-let gas_screen = Vec3::new(
-    gas_x * camera_zoom + camera_x,
-    gas_y * camera_zoom + camera_y,
-    0.0,
-);
+        // Render órbitas
+        if show_orbits {
+            for body in &bodies {
+                if body.orbital_radius > 0.0 {
+                    draw_orbit(
+                        &mut framebuffer,
+                        sun_center,
+                        body.orbital_radius,
+                        body.color,
+                        &camera,
+                        window_width as f32,
+                        window_height as f32,
+                    );
+                }
+            }
+        }
 
 
-draw_ring(
-    &mut framebuffer,
-    gas_screen,
-    160.0 * camera_zoom, // radio interno
-    220.0 * camera_zoom, // radio externo
-    0xAAAAAA,            // color gris claro
-);
+        // Render nave espacial siguiendo la cámara
+        let spaceship_offset = camera.target * 100.0 + Vec3::new(30.0, -20.0, 0.0);
+        let spaceship_pos_world = camera.position + spaceship_offset;
+        let spaceship_screen = camera.get_screen_position(spaceship_pos_world, window_width as f32, window_height as f32);
 
-// Dibuja la luna orbitando el planeta rocoso
-let rocky_planet = &bodies[0]; // el primero en tu lista
-let rocky_x = sun_center_x + rocky_planet.orbital_radius * rocky_planet.orbital_angle.cos();
-let rocky_y = sun_center_y + rocky_planet.orbital_radius * rocky_planet.orbital_angle.sin();
+        if spaceship_screen.z > 0.0 {
+            let spaceship_rotation = Vec3::new(0.0, camera.yaw.to_radians() + PI / 2.0, 0.0);
+            let spaceship_matrix = create_model_matrix(spaceship_screen, 15.0, spaceship_rotation);
+            let spaceship_uniforms = Uniforms { model_matrix: spaceship_matrix };
+            render(&mut framebuffer, &spaceship_uniforms, &spaceship_vertices, ShaderType::Spaceship, time);
+        }
 
-if !paused {
-    moon_angle += moon_speed;
-}
+        // UI simple
+        if show_ui && !camera.is_warping {
+            let ui_color = 0xFFFFFF;
+            // Información de cámara
+            draw_text(&mut framebuffer, 20, 20, &format!("Pos: ({:.0}, {:.0}, {:.0})", 
+                camera.position.x, camera.position.y, camera.position.z), ui_color);
+            
+            // Controles
+            if camera.is_warping {
+                draw_text(&mut framebuffer, 20, 40, ">>> WARPING <<<", 0xFFFF00);
+                let progress_percent = (camera.warp_progress * 100.0) as i32;
+                draw_text(&mut framebuffer, 20, 55, &format!("Progress: {}%", progress_percent), 0xFFFF00);
+            } else {
+                draw_text(&mut framebuffer, 20, 40, "WASD: Move | Space/Shift: Up/Down", ui_color);
+                draw_text(&mut framebuffer, 20, 55, "QE: Rotate | 0-6: Warp | O: Orbits | P: Pause | H: UI", ui_color);
+            }
+            
+            draw_text(&mut framebuffer, 20, 55, "QE: Rotate | 0-6: Warp | O: Orbits | P: Pause | H: UI", ui_color);
+            
+            // FPS Counter (opcional)
+            let fps = (1.0 / delta_time) as i32;
+            draw_text(&mut framebuffer, 20, 75, &format!("FPS: {}", fps), ui_color);
+            
+            // Status
+            if paused {
+                draw_text(&mut framebuffer, framebuffer_width - 150, 20, "PAUSED", 0xFF0000);
+            }
+            
+            if show_orbits {
+                draw_text(&mut framebuffer, framebuffer_width - 150, 40, "Orbits: ON", 0x00FF00);
+            }
+        }
 
-let moon_x = rocky_x + moon_orbital_radius * moon_angle.cos();
-let moon_y = rocky_y + moon_orbital_radius * moon_angle.sin();
+        // Controles de cámara 3D (SOLO si no está en warp)
+        if !camera.is_warping {
+            if window.is_key_down(Key::W) {
+                camera.move_forward(delta_time);
+            }
+            if window.is_key_down(Key::S) {
+                camera.move_backward(delta_time);
+            }
+            if window.is_key_down(Key::A) {
+                camera.move_left(delta_time);
+            }
+            if window.is_key_down(Key::D) {
+                camera.move_right(delta_time);
+            }
+            if window.is_key_down(Key::Space) {
+                camera.move_up(delta_time);
+            }
+            if window.is_key_down(Key::LeftShift) {
+                camera.move_down(delta_time);
+            }
 
-let moon_screen = Vec3::new(
-    moon_x * camera_zoom + camera_x,
-    moon_y * camera_zoom + camera_y,
-    0.0,
-);
-
-let moon_matrix = create_model_matrix(
-    moon_screen,
-    moon_scale * camera_zoom,
-    Vec3::new(0.0, moon_angle * 2.0, 0.0),
-);
-let moon_uniforms = Uniforms { model_matrix: moon_matrix };
-render(&mut framebuffer, &moon_uniforms, &vertex_arrays, ShaderType::Moon, time);
-
+            // Rotación de cámara
+            if window.is_key_down(Key::Q) {
+                camera.rotate(-50.0 * delta_time, 0.0);
+            }
+            if window.is_key_down(Key::E) {
+                camera.rotate(50.0 * delta_time, 0.0);
+            }
+            if window.is_key_down(Key::Z) {
+                camera.rotate(0.0, 30.0 * delta_time);
+            }
+            if window.is_key_down(Key::C) {
+                camera.rotate(0.0, -30.0 * delta_time);
+            }
+        }
 
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
@@ -611,4 +763,14 @@ render(&mut framebuffer, &moon_uniforms, &vertex_arrays, ShaderType::Moon, time)
 
         std::thread::sleep(frame_delay);
     }
+        println!("\n¡Gracias por explorar el sistema solar! 🚀");
+}
+
+
+fn calculate_planet_position(body: &CelestialBody, center: Vec3) -> Vec3 {
+    Vec3::new(
+        center.x + body.orbital_radius * body.orbital_angle.cos(),
+        center.y,
+        center.z + body.orbital_radius * body.orbital_angle.sin(),
+    )
 }

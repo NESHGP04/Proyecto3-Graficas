@@ -1,9 +1,9 @@
 use nalgebra_glm::{Vec3, dot};
 use crate::fragment::Fragment;
 use crate::vertex::Vertex;
+use crate::color::Color;
 use crate::shader;
 
-// Tipo de shader activo
 #[derive(Clone, Copy, PartialEq)]
 pub enum ShaderType {
     Sun,
@@ -12,6 +12,7 @@ pub enum ShaderType {
     IcePlanet,
     VolcanicPlanet,
     Moon,
+    Spaceship,
 }
 
 pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, shader_type: ShaderType, time: f32) -> Vec<Fragment> {
@@ -24,38 +25,30 @@ pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, shader_type: ShaderType, 
     
     let triangle_area = edge_function(&a, &b, &c);
     
-    // Iterate over each pixel in the bounding box
     for y in min_y..=max_y {
         for x in min_x..=max_x {
             let point = Vec3::new(x as f32 + 0.5, y as f32 + 0.5, 0.0);
             
-            // Calculate barycentric coordinates
             let (w1, w2, w3) = barycentric_coordinates(&point, &a, &b, &c, triangle_area);
             
-            // Check if the point is inside the triangle
             if w1 >= 0.0 && w1 <= 1.0 &&
                w2 >= 0.0 && w2 <= 1.0 &&
                w3 >= 0.0 && w3 <= 1.0 {
                 
-                // Interpolate normal
                 let normal = v1.transformed_normal * w1 + v2.transformed_normal * w2 + v3.transformed_normal * w3;
                 let normal = normal.normalize();
                 
-                // Interpolate world position (sin transformación de pantalla)
                 let world_pos = v1.position * w1 + v2.position * w2 + v3.position * w3;
                 
-                // Calculate lighting intensity
                 let intensity = dot(&normal, &light_dir).max(0.0);
                 
-                // Aplica el shader correspondiente
                 let base_color = match shader_type {
                     ShaderType::Sun => {
-                        // El sol no necesita iluminación, emite luz
                         shader::sun_shader(&world_pos, time)
                     },
                     ShaderType::RockyPlanet => {
                         let color = shader::rocky_planet_shader(&world_pos, time);
-                        color * intensity.max(0.2) // Luz ambiental mínima
+                        color * intensity.max(0.2)
                     },
                     ShaderType::GasGiant => {
                         let color = shader::gas_giant_shader(&world_pos, time);
@@ -63,20 +56,21 @@ pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, shader_type: ShaderType, 
                     },
                     ShaderType::IcePlanet => {
                         let color = shader::ice_planet_shader(&world_pos, time);
-                        color * intensity.max(0.3) // Los planetas helados reflejan más luz
+                        color * intensity.max(0.3)
                     },
                     ShaderType::VolcanicPlanet => {
                         let color = shader::volcanic_planet_shader(&world_pos, time);
-                        // Los volcanes emiten su propia luz
                         color * intensity.max(0.4)
                     },
                     ShaderType::Moon => {
                         let color = shader::moon_shader(&world_pos);
                         color * intensity.max(0.15)
                     },
+                    ShaderType::Spaceship => {
+                        spaceship_shader(&world_pos, &normal, &light_dir, intensity)
+                    },
                 };
                 
-                // Interpolate depth
                 let depth = a.z * w1 + b.z * w2 + c.z * w3;
                 
                 fragments.push(Fragment::new(x as f32, y as f32, base_color, depth));
@@ -85,6 +79,25 @@ pub fn triangle(v1: &Vertex, v2: &Vertex, v3: &Vertex, shader_type: ShaderType, 
     }
     
     fragments
+}
+
+// Shader para la nave espacial
+fn spaceship_shader(position: &Vec3, normal: &Vec3, _light_dir: &Vec3, intensity: f32) -> Color {
+    // Color base dorado metálico
+    let base_color = Color::new(200, 170, 50);
+    
+    // Paneles y detalles
+    let panel_variation = ((position.x * 5.0).sin() * (position.y * 5.0).cos()).abs();
+    let panel_color = if panel_variation > 0.7 {
+        Color::new(220, 190, 70)
+    } else {
+        base_color
+    };
+    
+    // Iluminación más brillante para que destaque
+    let lit_color = panel_color * intensity.max(0.4);
+    
+    lit_color
 }
 
 fn calculate_bounding_box(v1: &Vec3, v2: &Vec3, v3: &Vec3) -> (i32, i32, i32, i32) {
