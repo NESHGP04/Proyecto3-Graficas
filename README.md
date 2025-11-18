@@ -4,12 +4,7 @@ Simulador de sistema solar completamente funcional con cámara 3D, renderizado p
 
 ## 📹 Video de Demostración
 
-[Haz clic aquí para ver el video](./Proyecto3/assets/video.mov)
-
-## 📹 Video de Demostración
-
-[![Sistema Solar 3D Demo](./Proyecto3/assets/ss.png)](./Proyecto3/assets/video.mov)
-
+[![Sistema Solar 3D](./Proyecto3/assets/Ss.png)](./Proyecto3/assets/video.mov)
 
 *Video mostrando la exploración del sistema solar con todos sus componentes*
 
@@ -21,19 +16,19 @@ Simulador de sistema solar completamente funcional con cámara 3D, renderizado p
 - ✅ **Traslación Orbital** - Órbitas circulares con velocidades realistas
 - ✅ **Rotación Axial** - Cada planeta rota sobre su propio eje
 
-### 🎥 Sistema de Cámara (40 pts)
+### 🎥 Sistema de Cámara
 - ✅ **Movimiento 3D Completo** - 6 grados de libertad
 - ✅ **Controles Intuitivos** - WASD + Space/Shift para movimiento vertical
 - ✅ **Rotación Libre** - Control total de pitch y yaw
 - ✅ **Sistema Suave** - Interpolación y movimiento fluido
 
-### 🚀 Nave Espacial (30 pts)
+### 🚀 Nave Espacial
 - ✅ **Modelo 3D Personalizado** - Nave diseñada en Blender
 - ✅ **Sigue la Cámara** - Se posiciona relativamente a la vista
 - ✅ **Orientación Dinámica** - Rota según la dirección de la cámara
 - ✅ **Shader Metálico** - Color dorado con detalles procedurales
 
-### 🌟 Cuerpos Celestes (50 pts)
+### 🌟 Cuerpos Celestes
 1. **Sol** ☀️
    - Shader con gradiente radial
    - Manchas solares animadas
@@ -70,25 +65,25 @@ Simulador de sistema solar completamente funcional con cámara 3D, renderizado p
    - Textura rocosa
    - Órbita alrededor del planeta rocoso
 
-### 🎯 Instant Warping (20 pts)
+### 🎯 Instant Warping
 - ✅ **Teletransporte Rápido** - Teclas 1-6 para cada planeta
 - ✅ **Animación Suave** - Interpolación con easing cúbico
 - ✅ **Efecto Visual** - Transición fluida de 1.5 segundos
 - ✅ **Posicionamiento Inteligente** - Cámara se posiciona a distancia óptima
 
-### ⭐ Skybox (10 pts)
+### ⭐ Skybox
 - ✅ **1500+ Estrellas** - Campo estelar procedural
 - ✅ **Diferentes Tamaños** - Estrellas de 1x1 y 2x2 pixels
 - ✅ **Variación de Brillo** - Intensidades aleatorias
 - ✅ **Efecto Twinkle** - Parpadeo sutil animado
 
-### 🔵 Órbitas Visuales (20 pts)
+### 🔵 Órbitas Visuales
 - ✅ **Trayectorias Circulares** - Muestra el camino orbital
 - ✅ **Color por Planeta** - Cada órbita tiene color único
 - ✅ **Toggle On/Off** - Tecla 'O' para mostrar/ocultar
 - ✅ **Proyección 3D** - Se renderizan correctamente en espacio 3D
 
-### 🛡️ Detección de Colisiones (10 pts)
+### 🛡️ Detección de Colisiones
 - ✅ **Sistema de Colisión Esférica** - Previene atravesar planetas
 - ✅ **Resolución Automática** - Pushback cuando hay contacto
 - ✅ **Margen de Seguridad** - 50 unidades de distancia mínima
@@ -145,13 +140,8 @@ proyecto-sistema-solar/
 │   └── models/
 │       ├── sphere.obj       # Modelo de esfera
 │       └── spaceship.obj    # Modelo de nave
-├── screenshots/
-│   ├── sol.png
-│   ├── planeta_rocoso.png
-│   ├── gigante_gaseoso.png
-│   ├── planeta_helado.png
-│   ├── planeta_volcanico.png
-│   └── luna.png
+│   └── Ss.png               # Screen shot del render
+│   └── video.mov            # Video del render
 ├── Cargo.toml
 └── README.md
 ```
@@ -163,6 +153,7 @@ proyecto-sistema-solar/
 minifb = "0.28.0"          # Ventana y entrada
 nalgebra-glm = "0.20.0"    # Matemáticas 3D
 tobj = "4.0.3"             # Carga de modelos OBJ
+raylib = "5.5.1"
 ```
 
 ## 🚀 Compilación y Ejecución
@@ -173,6 +164,7 @@ tobj = "4.0.3"             # Carga de modelos OBJ
 
 ### Compilar
 ```bash
+cd src
 cargo build --release
 ```
 
@@ -223,48 +215,6 @@ fn project_to_screen(world_pos, camera) -> Vec2 {
   - Culling de objetos fuera de vista
   - Z-buffer para visibilidad
   - Renderizado por demanda
-
-## 🎨 Screenshots
-
-### Vista General
-![Vista del Sistema Solar](screenshots/sistema_completo.png)
-
-### Sol
-![Sol con shader procedural](screenshots/sol.png)
-
-### Planeta Rocoso
-![Planeta tipo Tierra](screenshots/planeta_rocoso.png)
-
-### Gigante Gaseoso
-![Planeta tipo Júpiter](screenshots/gigante_gaseoso.png)
-
-### Planeta Helado
-![Planeta tipo Urano](screenshots/planeta_helado.png)
-
-### Planeta Volcánico
-![Planeta tipo Io](screenshots/planeta_volcanico.png)
-
-### Luna
-![Luna con cráteres](screenshots/luna.png)
-
-### Nave Espacial
-![Nave en primera persona](screenshots/nave_espacial.png)
-
-## 📝 Puntuación Estimada
-
-| Característica | Puntos | Estado |
-|----------------|--------|--------|
-| Estética del sistema | 30 | ✅ Completado |
-| Performance | 20 | ✅ 60 FPS estable |
-| Planetas/Estrellas (6) | 50 | ✅ Completado |
-| Instant Warping | 10 | ✅ Completado |
-| Animación de Warp | 10 | ✅ Completado |
-| Nave Espacial | 30 | ✅ Completado |
-| Skybox | 10 | ✅ Completado |
-| Colisiones | 10 | ✅ Completado |
-| Movimiento 3D | 40 | ✅ Completado |
-| Órbitas | 20 | ✅ Completado |
-| **TOTAL** | **230** | **✅** |
 
 ## 👨‍💻 Autor
 
