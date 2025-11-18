@@ -4,7 +4,12 @@ Simulador de sistema solar completamente funcional con cámara 3D, renderizado p
 
 ## 📹 Video de Demostración
 
-[![Sistema Solar 3D Demo](link-a-tu-video-thumbnail.png)](link-a-tu-video.mp4)
+[Haz clic aquí para ver el video](./Proyecto3/assets/video.mov)
+
+## 📹 Video de Demostración
+
+[![Sistema Solar 3D Demo](./Proyecto3/assets/ss.png)](./Proyecto3/assets/video.mov)
+
 
 *Video mostrando la exploración del sistema solar con todos sus componentes*
 

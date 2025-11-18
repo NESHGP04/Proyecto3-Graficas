@@ -315,9 +315,9 @@ fn draw_char(framebuffer: &mut Framebuffer, x: usize, y: usize, c: char, color: 
 
 fn main() {
     let window_width = 1400;
-    let window_height = 900;
+    let window_height = 750;
     let framebuffer_width = 1400;
-    let framebuffer_height = 900;
+    let framebuffer_height = 750;
     let frame_delay = Duration::from_millis(16);
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
